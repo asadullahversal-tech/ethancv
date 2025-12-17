@@ -17,14 +17,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return body as T
 }
 
-export function signup(payload: { email: string; password: string; name?: string }) {
+export function signup(payload: { phone: string; password: string; name?: string }) {
   return request<AuthResponse>('/api/auth/signup', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
 }
 
-export function login(payload: { email: string; password: string }) {
+export function login(payload: { phone: string; password: string }) {
   return request<AuthResponse>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify(payload),

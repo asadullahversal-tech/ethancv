@@ -9,8 +9,8 @@ interface AuthState {
   loading: boolean
   error: string | null
   initialized: boolean
-  signup: (payload: { email: string; password: string; name?: string }) => Promise<void>
-  login: (payload: { email: string; password: string }) => Promise<void>
+  signup: (payload: { phone: string; password: string; name?: string }) => Promise<void>
+  login: (payload: { phone: string; password: string }) => Promise<void>
   logout: () => void
   hydrate: () => Promise<void>
   clearError: () => void

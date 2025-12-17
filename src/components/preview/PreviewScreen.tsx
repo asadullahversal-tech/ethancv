@@ -12,7 +12,7 @@ import ThumbnailSheet from './ThumbnailSheet'
 import { PricingTier } from '../../components/PricingTier'
 import { ResumePreview } from '../../components/resume/ResumePreview'
 import type { PaymentState, ResumeData, ResumePlan } from '../../types/resume'
-import { printPdf } from '../../lib/pdf'
+import { downloadPdf } from '../../lib/pdf'
 import { enhanceResumeForPreview } from '../../lib/enhance'
 import PaymentTabsModal from '../../components/payments/PaymentTabsModal'
 import type { PaymentIntentPayload } from '../../types/payments'
@@ -86,12 +86,12 @@ export default function PreviewScreen({
 
   if (!open) return null
 
-  /** Print the on-page resume with a consistent document title, then close. */
+  /** Download the on-page resume as a PDF with a consistent document title, then close. */
   const printNow = async () => {
     if (exportBlocked) return
     setDownloading(true)
     try {
-      printPdf({
+      await downloadPdf({
         containerId: 'resume-sheet',
         title: `${data.fullName || 'CV'} - ${data.headline || 'Mako'}`
       })

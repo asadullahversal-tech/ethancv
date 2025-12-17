@@ -18,7 +18,7 @@ import { PricingTier } from '../components/PricingTier'
 
 import PlanComparison from '../components/pricing/PlanComparison'
 import type { PaymentState, ResumeData, ResumePlan } from '../types/resume'
-import { printPdf } from '../lib/pdf'
+import { downloadPdf } from '../lib/pdf'
 import { enhanceResumeForPreview, generatePersonalizedSummary } from '../lib/enhance'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/controls/PrimaryButton'
@@ -47,7 +47,7 @@ const initialResume: ResumeData = {
   skills: '',
   photoUrl: '',
   domain: 'general',
-  language: 'fr',
+  language: 'en',
   experiences: [],
   education: [],
   certifications: [],
@@ -197,7 +197,6 @@ export default function Home() {
       }))
       setPaymentRef(ref)
       setStep(3)
-      setPreviewOpen(false)
       if (token) {
         try {
           await saveUserCv(token, {
@@ -212,15 +211,6 @@ export default function Home() {
           console.warn('CV save failed', e)
         }
       }
-      setTimeout(() => {
-        try {
-          printPdf({
-            containerId: 'resume-sheet'
-          })
-        } catch (e) {
-          console.warn('Auto-print failed', e)
-        }
-      }, 400)
     } catch (err) {
       console.error(err)
       const message =
@@ -248,7 +238,8 @@ export default function Home() {
       setData(saved.data)
       setWithPhoto(!!saved.withPhoto)
       if (saved.plan) {
-        setPayment((p) => ({ ...p, plan: saved.plan, price: priceOf(saved.plan) }))
+        const plan = saved.plan as ResumePlan
+        setPayment((p) => ({ ...p, plan, price: priceOf(plan) }))
       }
       if (saved.country) {
         setData((d) => ({ ...d, country: saved.country ?? d.country }))
@@ -534,12 +525,12 @@ export default function Home() {
             if (requireAuth()) return
             setPreviewOpen(true)
           }}
-          onDownload={() =>
-            printPdf({
+          onDownload={async () => {
+            await downloadPdf({
               containerId: 'resume-sheet',
               title: `${data.fullName || 'CV'} - ${data.headline || 'ETHAN'}`
             })
-          }
+          }}
           exportBlocked={hasDateErrors}
           exportBlockedTitle={exportBlockedTitle}
           onOpenPreview={() => setPreviewOpen(true)}

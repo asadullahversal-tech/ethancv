@@ -8,7 +8,7 @@ dotenv.config()
 
 const app = express()
 const corsOptions = {
-  origin: ['http://127.0.0.1:8000', 'http://localhost:8000'],
+  origin: ['*'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,

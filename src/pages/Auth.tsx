@@ -8,7 +8,7 @@ const API_BASE = 'http://127.0.0.1:8080'
 
 async function authRequest(
   mode: 'login' | 'signup',
-  payload: { email: string; password: string; name?: string }
+  payload: { phone: string; password: string; name?: string }
 ) {
   const res = await fetch(`${API_BASE}/api/auth/${mode}`, {
     method: 'POST',
@@ -19,7 +19,7 @@ async function authRequest(
   if (!res.ok) {
     throw new Error(body?.error || `${mode} failed`)
   }
-  return body as { token: string; user: { id: string; email: string; name?: string } }
+  return body as { token: string; user: { id: string; phone: string; name?: string } }
 }
 
 async function fetchMe(token: string) {
@@ -28,14 +28,14 @@ async function fetchMe(token: string) {
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body?.error || 'Auth check failed')
-  return body as { user: { id: string; email: string; name?: string } }
+  return body as { user: { id: string; phone: string; name?: string } }
 }
 
 export default function AuthPage() {
   const navigate = useNavigate()
   const { user, setSession } = useAuthStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
-  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -64,7 +64,7 @@ export default function AuthPage() {
     try {
       setError(null)
       setLoading(true)
-      const { token, user } = await authRequest(mode, { email, password, name })
+      const { token, user } = await authRequest(mode, { phone, password, name })
       localStorage.setItem('auth_token', token)
       setSession({ token, user })
       navigate('/')
@@ -108,13 +108,13 @@ export default function AuthPage() {
           ) : null}
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-neutral-800">Email</span>
+            <span className="mb-1 block text-sm font-medium text-neutral-800">Téléphone</span>
             <input
-              type="email"
+              type="tel"
               className="u-input w-full"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="vous@example.com"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+243 999 000 000"
             />
           </label>
 
