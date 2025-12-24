@@ -4,6 +4,8 @@ import stylePlugin from 'esbuild-style-plugin'
 import autoprefixer from 'autoprefixer'
 import tailwindcss from 'tailwindcss'
 import dotenv from 'dotenv'
+import fs from 'fs'
+import path from 'path'
 
 dotenv.config()
 
@@ -46,6 +48,13 @@ const esbuildOpts = {
 
 if (isProd) {
   await esbuild.build(esbuildOpts)
+  // Copy _redirects file for Netlify
+  const redirectsPath = path.join(process.cwd(), 'public', '_redirects')
+  const distRedirectsPath = path.join(process.cwd(), 'dist', '_redirects')
+  if (fs.existsSync(redirectsPath)) {
+    fs.copyFileSync(redirectsPath, distRedirectsPath)
+    console.log('Copied _redirects file to dist')
+  }
 } else {
   const ctx = await esbuild.context(esbuildOpts)
   await ctx.watch()
