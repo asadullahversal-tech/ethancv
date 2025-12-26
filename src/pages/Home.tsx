@@ -34,6 +34,7 @@ import { loadProfile, loadDraftResume, saveDraftResume } from '../lib/storage'
 import { useAuthStore } from '../stores/auth'
 import { useNavigate } from 'react-router'
 import { listUserCvs, saveUserCv, type UserCvRecord } from '../lib/cvApi'
+import { API_BASE } from '../config/api'
 
 /** Valeurs initiales du formulaire */
 const initialResume: ResumeData = {
@@ -146,6 +147,47 @@ export default function Home() {
     }
   }, [authReady, user, navigate])
 
+  /** Check payment status from URL (after PawaPay redirect) */
+  useEffect(() => {
+    const checkPaymentFromUrl = async () => {
+      const urlParams = new URLSearchParams(window.location.search)
+      const depositId = urlParams.get('depositId')
+      const paymentSuccess = urlParams.get('payment') === 'success'
+      
+      if (depositId && paymentSuccess && token) {
+        try {
+          const response = await fetch(`${API_BASE}/api/payments/status/${depositId}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          
+          if (response.ok) {
+            const statusData = await response.json()
+            if (statusData.status === 'completed') {
+              setPayment((p) => ({
+                ...p,
+                paid: true,
+                reference: depositId,
+                paidAt: Date.now()
+              }))
+              setPaymentRef(depositId)
+              setPayError(null)
+              // Clean URL
+              window.history.replaceState({}, '', window.location.pathname)
+            }
+          }
+        } catch (err) {
+          console.error('Failed to check payment status:', err)
+        }
+      }
+    }
+    
+    if (token) {
+      checkPaymentFromUrl()
+    }
+  }, [token])
+
   const choosePlan = (plan: ResumePlan) =>
     setPayment((p) => ({ ...p, plan, price: priceOf(plan) }))
 
@@ -158,17 +200,9 @@ export default function Home() {
     return false
   }
 
-  /** Démarre un paiement Mobile Money (RDC / Madagascar). */
+  /** Démarre un paiement Mobile Money via PawaPay. */
   const startPayment = async (intent: PaymentIntentPayload) => {
     if (requireAuth()) return
-    const isSupportedCountry = () => {
-      const c = (data.country || '').toLowerCase()
-      return c.includes('madagascar') || c.includes('congo') || c.includes('rdc')
-    }
-    if (!isSupportedCountry()) {
-      setPayError(t('payment.countryRequired', 'Sélectionnez RDC ou Madagascar pour payer en Mobile Money.'))
-      return
-    }
 
     if (intent.method === 'card') {
       setPayError(t('payment.cardDisabled', 'Le paiement par carte est désactivé. Utilisez Mobile Money.'))
@@ -184,33 +218,75 @@ export default function Home() {
     setPayError(null)
     setPaying(true)
     try {
-      await new Promise((r) => setTimeout(r, 900))
-      const ref = `MM-${Date.now().toString(36).toUpperCase()}`
-      setPayment((p) => ({
-        ...p,
-        paid: true,
-        method: 'mobile',
-        provider: intent.provider,
-        phone: phoneValue,
-        reference: ref,
-        paidAt: Date.now()
-      }))
-      setPaymentRef(ref)
-      setStep(3)
-      if (token) {
-        try {
-          await saveUserCv(token, {
-            data,
-            withPhoto,
-            plan: payment.plan,
-            title: data.fullName || 'CV',
-          })
-          const res = await listUserCvs(token)
-          setCvs(res.cvs || [])
-        } catch (e) {
-          console.warn('CV save failed', e)
-        }
+      // Call backend to create PawaPay payment
+      const response = await fetch(`${API_BASE}/api/payments/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          plan: payment.plan,
+          amount: payment.price,
+          phone: phoneValue,
+          provider: intent.provider || 'mtn'
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Payment creation failed')
       }
+
+      const paymentData = await response.json()
+      
+      // If there's a redirect URL, redirect user to PawaPay payment page
+      if (paymentData.redirectUrl) {
+        window.location.href = paymentData.redirectUrl
+        return
+      }
+
+      // Otherwise, poll for payment status
+      const checkPaymentStatus = async () => {
+        const statusResponse = await fetch(`${API_BASE}/api/payments/status/${paymentData.depositId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json()
+          if (statusData.status === 'completed') {
+            setPayment((p) => ({
+              ...p,
+              paid: true,
+              method: 'mobile',
+              provider: intent.provider,
+              phone: phoneValue,
+              reference: paymentData.depositId,
+              paidAt: Date.now()
+            }))
+            setPaymentRef(paymentData.depositId)
+            setStep(3)
+            return true
+          }
+        }
+        return false
+      }
+
+      // Poll every 3 seconds for payment status (max 20 attempts = 1 minute)
+      let attempts = 0
+      const pollInterval = setInterval(async () => {
+        attempts++
+        const completed = await checkPaymentStatus()
+        if (completed || attempts >= 20) {
+          clearInterval(pollInterval)
+          if (!completed) {
+            setPayError('Payment is still pending. Please check your mobile money and try again.')
+          }
+        }
+      }, 3000)
+
     } catch (err) {
       console.error(err)
       const message =

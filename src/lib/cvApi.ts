@@ -34,6 +34,14 @@ export function saveUserCv(token: string, payload: { data: ResumeData; withPhoto
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
+  }).catch((err) => {
+    // If payment required error, throw with specific flag
+    if (err.message?.includes('Payment required') || err.message?.includes('402')) {
+      const paymentError = new Error('Payment required before creating CV')
+      ;(paymentError as any).requiresPayment = true
+      throw paymentError
+    }
+    throw err
   })
 }
 
