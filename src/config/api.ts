@@ -15,12 +15,12 @@ const getApiBase = (): string => {
     
     // If not localhost, we're in production - use the Vercel backend
     if (!isLocalhost) {
-      return 'https://backend-topaz-nine-29.vercel.app'
+      return 'https://ethanbackend.vercel.app'
     }
   }
   
   // Development: use localhost backend
-  return 'https://backend-topaz-nine-29.vercel.app'
+  return 'https://ethanbackend.vercel.app'
 }
 
 export const API_BASE = getApiBase()
