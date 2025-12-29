@@ -229,71 +229,109 @@ export default function Home() {
           plan: payment.plan,
           amount: payment.price,
           phone: phoneValue,
-          provider: intent.provider || 'mtn'
+          provider: intent.provider || 'mtn',
+          country: data.country || 'COD',
+          currency: 'CDF' // Use CDF for Congo, adjust if needed
         })
       })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.error || errorData.details?.errorMessage || 'Payment creation failed'
+        const errorMessage = errorData.message || errorData.error || errorData.details?.errorMessage || 'Payment creation failed'
         throw new Error(errorMessage)
       }
 
       const paymentData = await response.json()
       
-      // If there's a redirect URL, redirect user to PawaPay payment page
-      if (paymentData.redirectUrl) {
-        window.location.href = paymentData.redirectUrl
-        return
+      // Store deposit ID for polling
+      const depositId = paymentData.depositId
+      if (!depositId) {
+        throw new Error('No deposit ID received from payment gateway')
       }
 
-      // Otherwise, poll for payment status
+      // Set initial status
+      if (paymentData.status === 'processing' || paymentData.status === 'pending') {
+        setPayError(null) // Clear any previous errors
+        // Show processing message
+        setPayError('Payment is processing. Please approve the payment in your mobile money app...')
+      }
+
+      // Poll for payment status
       const checkPaymentStatus = async () => {
-        const statusResponse = await fetch(`${API_BASE}/api/payments/status/${paymentData.depositId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
+        try {
+          const statusResponse = await fetch(`${API_BASE}/api/payments/status/${depositId}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json()
+            const status = statusData.status
+            const pawapayStatus = statusData.pawapayStatus
+            
+            // Handle different statuses
+            if (status === 'completed' || pawapayStatus === 'COMPLETED') {
+              setPayment((p) => ({
+                ...p,
+                paid: true,
+                method: 'mobile',
+                provider: intent.provider,
+                phone: phoneValue,
+                reference: depositId,
+                paidAt: Date.now()
+              }))
+              setPaymentRef(depositId)
+              setPayError(null)
+              setStep(3)
+              // Download CV automatically after successful payment
+              await downloadPdf({
+                containerId: 'resume-sheet',
+                title: `${data.fullName || 'CV'} - ${data.headline || 'Mako'}`
+              })
+              return { completed: true, failed: false }
+            } else if (status === 'failed' || pawapayStatus === 'FAILED') {
+              const failureMessage = statusData.failureReason?.failureMessage || 
+                                    'Payment was not approved. Please try again.'
+              setPayError(failureMessage)
+              return { completed: false, failed: true }
+            } else if (status === 'processing' || pawapayStatus === 'PROCESSING' || pawapayStatus === 'ACCEPTED') {
+              // Still processing, show message
+              setPayError('Payment is processing. Please approve the payment in your mobile money app...')
+              return { completed: false, failed: false }
+            }
           }
-        })
-        
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json()
-          if (statusData.status === 'completed') {
-            setPayment((p) => ({
-              ...p,
-              paid: true,
-              method: 'mobile',
-              provider: intent.provider,
-              phone: phoneValue,
-              reference: paymentData.depositId,
-              paidAt: Date.now()
-            }))
-            setPaymentRef(paymentData.depositId)
-            setStep(3)
-            return true
-          }
+          return { completed: false, failed: false }
+        } catch (err) {
+          console.error('Error checking payment status:', err)
+          return { completed: false, failed: false }
         }
-        return false
       }
 
-      // Poll every 3 seconds for payment status (max 20 attempts = 1 minute)
+      // Poll every 3 seconds for payment status (max 40 attempts = 2 minutes)
       let attempts = 0
+      const maxAttempts = 40
       const pollInterval = setInterval(async () => {
         attempts++
-        const completed = await checkPaymentStatus()
-        if (completed || attempts >= 20) {
+        const result = await checkPaymentStatus()
+        
+        if (result.completed || result.failed || attempts >= maxAttempts) {
           clearInterval(pollInterval)
-          if (!completed) {
-            setPayError('Payment is still pending. Please check your mobile money and try again.')
+          setPaying(false)
+          if (attempts >= maxAttempts && !result.completed) {
+            setPayError('Payment confirmation timed out. Please check your mobile money app and try again.')
           }
         }
       }, 3000)
+
+      // Initial check
+      await checkPaymentStatus()
 
     } catch (err) {
       console.error(err)
       const message =
         err instanceof Error ? err.message : t('payment.backendMissing', 'Payment unavailable.')
       setPayError(message)
-    } finally {
       setPaying(false)
     }
   }
