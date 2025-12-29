@@ -217,16 +217,37 @@ export default function PaymentTabsModal(props: PaymentTabsModalProps) {
   // Get status message and styling
   const getStatusDisplay = () => {
     if (paymentStatus === 'pending') {
-      return { message: 'Payment pending. Please approve in your mobile money app...', color: 'text-blue-600', bg: 'bg-blue-50' }
+      return { 
+        message: 'Please check your mobile phone for an authorization prompt (USSD or SMS). Approve the payment to complete the transaction.', 
+        color: 'text-blue-700', 
+        bg: 'bg-blue-50',
+        icon: 'pending'
+      }
     }
     if (paymentStatus === 'processing') {
-      return { message: 'Payment processing. Please wait...', color: 'text-blue-600', bg: 'bg-blue-50' }
+      return { 
+        message: 'Payment is being processed. Please check your mobile phone and approve the authorization prompt if you haven\'t already.', 
+        color: 'text-blue-700', 
+        bg: 'bg-blue-50',
+        icon: 'processing'
+      }
     }
     if (paymentStatus === 'completed') {
-      return { message: 'Payment successful!', color: 'text-green-600', bg: 'bg-green-50' }
+      return { 
+        message: 'Payment successful! Your CV is ready for download.', 
+        color: 'text-green-700', 
+        bg: 'bg-green-50',
+        icon: 'completed'
+      }
     }
     if (paymentStatus === 'failed') {
-      return { message: paymentError || 'Payment failed. Please try again.', color: 'text-red-600', bg: 'bg-red-50' }
+      const errorMsg = paymentError || 'Payment was not approved or timed out. Please check your mobile money app and try again.'
+      return { 
+        message: `Payment failed: ${errorMsg}`, 
+        color: 'text-red-700', 
+        bg: 'bg-red-50',
+        icon: 'failed'
+      }
     }
     return null
   }
@@ -237,20 +258,29 @@ export default function PaymentTabsModal(props: PaymentTabsModalProps) {
     <Modal open={open} onOpenChange={handleOpenChange} title={t('payment.modal.title', 'Payment')}>
       {/* Payment Status Display */}
       {statusDisplay && (
-        <div className={`mb-4 rounded-lg border p-3 ${statusDisplay.bg} ${statusDisplay.color}`}>
-          <div className="flex items-center gap-2">
-            {paymentStatus === 'processing' || paymentStatus === 'pending' ? (
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
-            ) : paymentStatus === 'completed' ? (
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            ) : paymentStatus === 'failed' ? (
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            ) : null}
-            <p className="text-sm font-medium">{statusDisplay.message}</p>
+        <div className={`mb-4 rounded-lg border-2 p-4 ${statusDisplay.bg} ${statusDisplay.color}`}>
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 mt-0.5">
+              {statusDisplay.icon === 'pending' || statusDisplay.icon === 'processing' ? (
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+              ) : statusDisplay.icon === 'completed' ? (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : statusDisplay.icon === 'failed' ? (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : null}
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold leading-relaxed">{statusDisplay.message}</p>
+              {(paymentStatus === 'pending' || paymentStatus === 'processing') && (
+                <p className="mt-2 text-xs opacity-90">
+                  💡 Tip: Keep this window open. The payment will be confirmed automatically once you approve it on your phone.
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -303,12 +303,13 @@ export default function Home() {
                                     'Payment was not approved. Please try again.'
               setPayError(failureMessage)
               return { completed: false, failed: true }
-            } else if (status === 'processing' || pawapayStatus === 'PROCESSING' || pawapayStatus === 'ACCEPTED' || pawapayStatus === 'NOT_FOUND') {
-              // Still processing or pending, show message
+            } else if (status === 'processing' || pawapayStatus === 'PROCESSING' || pawapayStatus === 'ACCEPTED') {
+              // Payment is being processed
               setPaymentStatus('processing')
               setPayError(null)
               return { completed: false, failed: false }
-            } else if (status === 'pending') {
+            } else if (status === 'pending' || pawapayStatus === 'NOT_FOUND') {
+              // Payment is pending - waiting for user approval on mobile phone
               setPaymentStatus('pending')
               setPayError(null)
               return { completed: false, failed: false }
@@ -333,7 +334,7 @@ export default function Home() {
           setPaying(false)
           if (attempts >= maxAttempts && !result.completed) {
             setPaymentStatus('failed')
-            setPayError('Payment confirmation timed out. Please check your mobile money app and try again.')
+            setPayError('Payment authorization timed out. Please check your mobile phone for the authorization prompt and approve it, then try again.')
           }
         }
       }, 3000)
