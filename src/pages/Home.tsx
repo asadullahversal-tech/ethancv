@@ -235,7 +235,8 @@ export default function Home() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || 'Payment creation failed')
+        const errorMessage = errorData.error || errorData.details?.errorMessage || 'Payment creation failed'
+        throw new Error(errorMessage)
       }
 
       const paymentData = await response.json()

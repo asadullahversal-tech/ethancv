@@ -106,14 +106,17 @@ export default function PreviewScreen({
     setPaymentOpen(true)
   }
 
-  /** Trigger payment using parent flow (redirect or local simulation), then print if still here. */
+  /** Trigger payment using parent flow (redirect or local simulation). */
   const handlePay = async (intent: PaymentIntentPayload) => {
     setProcessingPay(true)
     try {
       await onSimulatePay(intent)
-      // If no redirect (local simulation), close modal and print
+      // Close modal - don't auto-download until payment is verified
+      // Payment status will be checked and CV download will be enabled only after verification
       setPaymentOpen(false)
-      await printNow()
+    } catch (err) {
+      // Payment failed - don't download CV
+      console.error('Payment failed:', err)
     } finally {
       setProcessingPay(false)
     }
