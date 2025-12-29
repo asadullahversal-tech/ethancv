@@ -214,8 +214,47 @@ export default function PaymentTabsModal(props: PaymentTabsModalProps) {
   const primaryDisabled = busy || (paid && !!exportBlocked) || (!paid && (tab === 'card' ? !cardValid : !mobileValid))
   const primaryLabel = paid ? t('payment.primary.download') : t('payment.primary.pay')
 
+  // Get status message and styling
+  const getStatusDisplay = () => {
+    if (paymentStatus === 'pending') {
+      return { message: 'Payment pending. Please approve in your mobile money app...', color: 'text-blue-600', bg: 'bg-blue-50' }
+    }
+    if (paymentStatus === 'processing') {
+      return { message: 'Payment processing. Please wait...', color: 'text-blue-600', bg: 'bg-blue-50' }
+    }
+    if (paymentStatus === 'completed') {
+      return { message: 'Payment successful!', color: 'text-green-600', bg: 'bg-green-50' }
+    }
+    if (paymentStatus === 'failed') {
+      return { message: paymentError || 'Payment failed. Please try again.', color: 'text-red-600', bg: 'bg-red-50' }
+    }
+    return null
+  }
+
+  const statusDisplay = getStatusDisplay()
+
   return (
     <Modal open={open} onOpenChange={handleOpenChange} title={t('payment.modal.title', 'Payment')}>
+      {/* Payment Status Display */}
+      {statusDisplay && (
+        <div className={`mb-4 rounded-lg border p-3 ${statusDisplay.bg} ${statusDisplay.color}`}>
+          <div className="flex items-center gap-2">
+            {paymentStatus === 'processing' || paymentStatus === 'pending' ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+            ) : paymentStatus === 'completed' ? (
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : paymentStatus === 'failed' ? (
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : null}
+            <p className="text-sm font-medium">{statusDisplay.message}</p>
+          </div>
+        </div>
+      )}
+
       {/* Header info */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-neutral-700">
