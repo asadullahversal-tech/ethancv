@@ -54,6 +54,8 @@ export interface PreviewScreenProps {
   onSimulatePay: (intent: PaymentIntentPayload) => Promise<void>
   exportBlocked: boolean
   exportBlockedTitle?: string
+  paymentStatus?: 'idle' | 'pending' | 'processing' | 'completed' | 'failed'
+  paymentError?: string | null
 }
 
 /** PreviewScreen component */
@@ -66,7 +68,9 @@ export default function PreviewScreen({
   onChoosePlan,
   onSimulatePay,
   exportBlocked,
-  exportBlockedTitle
+  exportBlockedTitle,
+  paymentStatus = 'idle',
+  paymentError = null
 }: PreviewScreenProps) {
   const { t } = useTranslation()
   const [downloading, setDownloading] = useState(false)
@@ -83,6 +87,18 @@ export default function PreviewScreen({
       setPaymentOpen(true)
     }
   }, [open, payment.paid])
+
+  // Keep modal open while payment is pending or processing
+  useEffect(() => {
+    if (paymentStatus === 'pending' || paymentStatus === 'processing') {
+      setPaymentOpen(true)
+    } else if (paymentStatus === 'completed' || paymentStatus === 'failed') {
+      // Close modal after a short delay when completed or failed
+      setTimeout(() => {
+        setPaymentOpen(false)
+      }, 2000)
+    }
+  }, [paymentStatus])
 
   if (!open) return null
 
@@ -111,14 +127,21 @@ export default function PreviewScreen({
     setProcessingPay(true)
     try {
       await onSimulatePay(intent)
-      // Close modal - don't auto-download until payment is verified
-      // Payment status will be checked and CV download will be enabled only after verification
-      setPaymentOpen(false)
+      // Don't close modal here - it will be closed when payment status changes
+      // Modal stays open while payment is pending/processing
     } catch (err) {
       // Payment failed - don't download CV
       console.error('Payment failed:', err)
     } finally {
       setProcessingPay(false)
+    }
+  }
+
+  /** Handle modal close - prevent closing while payment is pending/processing */
+  const handleModalClose = (next: boolean) => {
+    // Only allow closing if payment is not pending or processing
+    if (!next || (paymentStatus !== 'pending' && paymentStatus !== 'processing')) {
+      setPaymentOpen(next)
     }
   }
 
@@ -203,12 +226,14 @@ export default function PreviewScreen({
       {/* Payment modal */}
       <PaymentTabsModal
         open={paymentOpen}
-        onOpenChange={setPaymentOpen}
+        onOpenChange={handleModalClose}
         paid={payment.paid}
         plan={payment.plan}
         price={payment.price}
         onPay={handlePay}
         onDownload={printNow}
+        paymentStatus={paymentStatus}
+        paymentError={paymentError}
         exportBlocked={exportBlocked}
         exportBlockedTitle={exportBlockedTitle}
         country={data.country}

@@ -26,6 +26,8 @@ export interface PaymentTabsModalProps {
   exportBlockedTitle?: string
   country?: string
   phonePrefill?: string
+  paymentStatus?: 'idle' | 'pending' | 'processing' | 'completed' | 'failed'
+  paymentError?: string | null
 }
 
 /** Luhn checksum validation for card numbers. */
@@ -110,7 +112,9 @@ export default function PaymentTabsModal(props: PaymentTabsModalProps) {
     exportBlocked,
     exportBlockedTitle,
     country,
-    phonePrefill
+    phonePrefill,
+    paymentStatus = 'idle',
+    paymentError = null
   } = props
   const { t } = useTranslation()
 
@@ -158,6 +162,10 @@ export default function PaymentTabsModal(props: PaymentTabsModalProps) {
 
   /** Reset on close + prefill phone when opening */
   const handleOpenChange = (next: boolean) => {
+    // Prevent closing if payment is pending or processing
+    if (!next && (paymentStatus === 'pending' || paymentStatus === 'processing')) {
+      return
+    }
     onOpenChange(next)
     if (!next) {
       setBusy(false)
@@ -196,8 +204,8 @@ export default function PaymentTabsModal(props: PaymentTabsModalProps) {
           ? { method: 'mobile', provider, phone }
           : { method: 'card' }
       await onPay(intent)
-      // If no redirect happened (local simulation), the parent will set paid and trigger download if desired.
-      handleOpenChange(false)
+      // Don't close modal here - it will stay open while payment is pending/processing
+      // Modal will close automatically when payment status changes to completed or failed
     } finally {
       setBusy(false)
     }

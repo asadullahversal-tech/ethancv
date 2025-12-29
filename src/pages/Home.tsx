@@ -131,6 +131,7 @@ export default function Home() {
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
   const [paymentRef, setPaymentRef] = useState<string | null>(null)
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'processing' | 'completed' | 'failed'>('idle')
   const [profileSaved, setProfileSaved] = useState(false)
   const [cvs, setCvs] = useState<UserCvRecord[]>([])
   const [cvsLoading, setCvsLoading] = useState(false)
@@ -217,6 +218,7 @@ export default function Home() {
 
     setPayError(null)
     setPaying(true)
+    setPaymentStatus('pending')
     try {
       // Call backend to create PawaPay payment
       const response = await fetch(`${API_BASE}/api/payments/create`, {
@@ -238,6 +240,7 @@ export default function Home() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         const errorMessage = errorData.message || errorData.error || errorData.details?.errorMessage || 'Payment creation failed'
+        setPaymentStatus('failed')
         throw new Error(errorMessage)
       }
 
@@ -246,14 +249,17 @@ export default function Home() {
       // Store deposit ID for polling
       const depositId = paymentData.depositId
       if (!depositId) {
+        setPaymentStatus('failed')
         throw new Error('No deposit ID received from payment gateway')
       }
 
-      // Set initial status
-      if (paymentData.status === 'processing' || paymentData.status === 'pending') {
-        setPayError(null) // Clear any previous errors
-        // Show processing message
-        setPayError('Payment is processing. Please approve the payment in your mobile money app...')
+      // Set initial status based on response
+      if (paymentData.status === 'processing') {
+        setPaymentStatus('processing')
+        setPayError(null)
+      } else if (paymentData.status === 'pending') {
+        setPaymentStatus('pending')
+        setPayError(null)
       }
 
       // Poll for payment status
@@ -272,6 +278,7 @@ export default function Home() {
             
             // Handle different statuses
             if (status === 'completed' || pawapayStatus === 'COMPLETED') {
+              setPaymentStatus('completed')
               setPayment((p) => ({
                 ...p,
                 paid: true,
@@ -291,13 +298,19 @@ export default function Home() {
               })
               return { completed: true, failed: false }
             } else if (status === 'failed' || pawapayStatus === 'FAILED') {
+              setPaymentStatus('failed')
               const failureMessage = statusData.failureReason?.failureMessage || 
                                     'Payment was not approved. Please try again.'
               setPayError(failureMessage)
               return { completed: false, failed: true }
-            } else if (status === 'processing' || pawapayStatus === 'PROCESSING' || pawapayStatus === 'ACCEPTED') {
-              // Still processing, show message
-              setPayError('Payment is processing. Please approve the payment in your mobile money app...')
+            } else if (status === 'processing' || pawapayStatus === 'PROCESSING' || pawapayStatus === 'ACCEPTED' || pawapayStatus === 'NOT_FOUND') {
+              // Still processing or pending, show message
+              setPaymentStatus('processing')
+              setPayError(null)
+              return { completed: false, failed: false }
+            } else if (status === 'pending') {
+              setPaymentStatus('pending')
+              setPayError(null)
               return { completed: false, failed: false }
             }
           }
@@ -319,6 +332,7 @@ export default function Home() {
           clearInterval(pollInterval)
           setPaying(false)
           if (attempts >= maxAttempts && !result.completed) {
+            setPaymentStatus('failed')
             setPayError('Payment confirmation timed out. Please check your mobile money app and try again.')
           }
         }
@@ -332,6 +346,7 @@ export default function Home() {
       const message =
         err instanceof Error ? err.message : t('payment.backendMissing', 'Payment unavailable.')
       setPayError(message)
+      setPaymentStatus('failed')
       setPaying(false)
     }
   }
@@ -812,6 +827,8 @@ export default function Home() {
         onSimulatePay={async (intent) => startPayment(intent)}
         exportBlocked={hasDateErrors}
         exportBlockedTitle={exportBlockedTitle}
+        paymentStatus={paymentStatus}
+        paymentError={payError}
       />
 
       {/* WhatsApp share modal (shown after saving info) */}
