@@ -148,39 +148,98 @@ export default function Home() {
     }
   }, [authReady, user, navigate])
 
-  /** Check payment status from URL (after PawaPay redirect) */
+  /** Check payment status from URL (after PawaPay redirect) - Stripe-like flow */
   useEffect(() => {
     const checkPaymentFromUrl = async () => {
       const urlParams = new URLSearchParams(window.location.search)
-      const depositId = urlParams.get('depositId')
       const paymentSuccess = urlParams.get('payment') === 'success'
+      const depositIdFromUrl = urlParams.get('depositId')
+      
+      // Get depositId from URL or localStorage
+      const depositId = depositIdFromUrl || localStorage.getItem('pawapay_depositId')
+      const plan = urlParams.get('plan') || localStorage.getItem('pawapay_plan')
       
       if (depositId && paymentSuccess && token) {
+        setPaying(true)
+        setPaymentStatus('processing')
+        
         try {
-          const response = await fetch(`${API_BASE}/api/payments/status/${depositId}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
+          // Poll for payment status (PawaPay may still be processing)
+          const checkStatus = async () => {
+            const response = await fetch(`${API_BASE}/api/payments/status/${depositId}`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            })
+            
+            if (response.ok) {
+              const statusData = await response.json()
+              const status = statusData.status
+              const pawapayStatus = statusData.pawapayStatus
+              
+              if (status === 'completed' || pawapayStatus === 'COMPLETED') {
+                setPaymentStatus('completed')
+                setPayment((p) => ({
+                  ...p,
+                  paid: true,
+                  plan: plan || p.plan,
+                  method: 'mobile',
+                  reference: depositId,
+                  paidAt: Date.now()
+                }))
+                setPaymentRef(depositId)
+                setPayError(null)
+                setStep(3)
+                setPaying(false)
+                
+                // Download CV automatically after successful payment
+                await downloadPdf({
+                  containerId: 'resume-sheet',
+                  title: `${data.fullName || 'CV'} - ${data.headline || 'Mako'}`
+                })
+                
+                // Clean URL and localStorage
+                window.history.replaceState({}, '', window.location.pathname)
+                localStorage.removeItem('pawapay_depositId')
+                localStorage.removeItem('pawapay_plan')
+                return true
+              } else if (status === 'failed' || pawapayStatus === 'FAILED') {
+                setPaymentStatus('failed')
+                const failureMessage = statusData.failureReason?.failureMessage || 
+                                      'Payment was not approved. Please try again.'
+                setPayError(failureMessage)
+                setPaying(false)
+                window.history.replaceState({}, '', window.location.pathname)
+                localStorage.removeItem('pawapay_depositId')
+                localStorage.removeItem('pawapay_plan')
+                return true
+              } else {
+                // Still processing, check again in 2 seconds
+                setTimeout(checkStatus, 2000)
+                return false
+              }
             }
-          })
-          
-          if (response.ok) {
-            const statusData = await response.json()
-            if (statusData.status === 'completed') {
-              setPayment((p) => ({
-                ...p,
-                paid: true,
-                reference: depositId,
-                paidAt: Date.now()
-              }))
-              setPaymentRef(depositId)
-              setPayError(null)
-              // Clean URL
-              window.history.replaceState({}, '', window.location.pathname)
-            }
+            return false
           }
+          
+          // Start checking status
+          await checkStatus()
+          
         } catch (err) {
           console.error('Failed to check payment status:', err)
+          setPaymentStatus('failed')
+          setPayError('Failed to verify payment status. Please check your payment history.')
+          setPaying(false)
+          window.history.replaceState({}, '', window.location.pathname)
         }
+      } else if (depositId && !paymentSuccess) {
+        // Payment was cancelled or failed
+        setPaymentStatus('failed')
+        setPayError('Payment was cancelled or failed.')
+        setPaying(false)
+        window.history.replaceState({}, '', window.location.pathname)
+        localStorage.removeItem('pawapay_depositId')
+        localStorage.removeItem('pawapay_plan')
       }
     }
     
@@ -201,7 +260,7 @@ export default function Home() {
     return false
   }
 
-  /** Démarre un paiement Mobile Money via PawaPay. */
+  /** Démarre un paiement Mobile Money via PawaPay - Stripe-like redirect flow. */
   const startPayment = async (intent: PaymentIntentPayload) => {
     if (requireAuth()) return
 
@@ -210,17 +269,15 @@ export default function Home() {
       return
     }
 
-    const phoneValue = intent.phone || data.phone
-    if (!phoneValue) {
-      setPayError(t('payment.validation.phone', 'Numéro requis pour Mobile Money.'))
-      return
-    }
-
     setPayError(null)
     setPaying(true)
     setPaymentStatus('pending')
+    
     try {
-      // Call backend to create PawaPay payment
+      // Build return URL - where PawaPay will redirect user after payment
+      const returnUrl = `${window.location.origin}${window.location.pathname}?payment=success&plan=${encodeURIComponent(payment.plan)}`
+      
+      // Call backend to create PawaPay Payment Page session
       const response = await fetch(`${API_BASE}/api/payments/create`, {
         method: 'POST',
         headers: {
@@ -230,10 +287,11 @@ export default function Home() {
         body: JSON.stringify({
           plan: payment.plan,
           amount: payment.price,
-          phone: phoneValue,
-          provider: intent.provider || 'mtn',
+          phone: intent.phone || data.phone,
+          provider: intent.provider || 'vodacom',
           country: data.country || 'COD',
-          currency: 'CDF' // Use CDF for Congo, adjust if needed
+          currency: 'CDF',
+          returnUrl: returnUrl // Where to redirect after payment
         })
       })
 
@@ -241,109 +299,37 @@ export default function Home() {
         const errorData = await response.json().catch(() => ({}))
         const errorMessage = errorData.message || errorData.error || errorData.details?.errorMessage || 'Payment creation failed'
         setPaymentStatus('failed')
+        setPaying(false)
         throw new Error(errorMessage)
       }
 
       const paymentData = await response.json()
       
-      // Store deposit ID for polling
-      const depositId = paymentData.depositId
-      if (!depositId) {
+      // PawaPay Payment Page returns a redirectUrl (like Stripe checkout)
+      const redirectUrl = paymentData.redirectUrl
+      
+      if (!redirectUrl) {
         setPaymentStatus('failed')
-        throw new Error('No deposit ID received from payment gateway')
+        setPaying(false)
+        throw new Error('No redirect URL received from payment gateway')
       }
 
-      // Set initial status based on response
-      if (paymentData.status === 'processing') {
-        setPaymentStatus('processing')
-        setPayError(null)
-      } else if (paymentData.status === 'pending') {
-        setPaymentStatus('pending')
-        setPayError(null)
+      // Store depositId in localStorage for when user returns
+      if (paymentData.depositId) {
+        localStorage.setItem('pawapay_depositId', paymentData.depositId)
+        localStorage.setItem('pawapay_plan', payment.plan)
       }
 
-      // Poll for payment status
-      const checkPaymentStatus = async () => {
-        try {
-          const statusResponse = await fetch(`${API_BASE}/api/payments/status/${depositId}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          })
-          
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json()
-            const status = statusData.status
-            const pawapayStatus = statusData.pawapayStatus
-            
-            // Handle different statuses
-            if (status === 'completed' || pawapayStatus === 'COMPLETED') {
-              setPaymentStatus('completed')
-              setPayment((p) => ({
-                ...p,
-                paid: true,
-                method: 'mobile',
-                provider: intent.provider,
-                phone: phoneValue,
-                reference: depositId,
-                paidAt: Date.now()
-              }))
-              setPaymentRef(depositId)
-              setPayError(null)
-              setStep(3)
-              // Download CV automatically after successful payment
-              await downloadPdf({
-                containerId: 'resume-sheet',
-                title: `${data.fullName || 'CV'} - ${data.headline || 'Mako'}`
-              })
-              return { completed: true, failed: false }
-            } else if (status === 'failed' || pawapayStatus === 'FAILED') {
-              setPaymentStatus('failed')
-              const failureMessage = statusData.failureReason?.failureMessage || 
-                                    'Payment was not approved. Please try again.'
-              setPayError(failureMessage)
-              return { completed: false, failed: true }
-            } else if (status === 'processing' || pawapayStatus === 'PROCESSING' || pawapayStatus === 'ACCEPTED') {
-              // Payment is being processed
-              setPaymentStatus('processing')
-              setPayError(null)
-              return { completed: false, failed: false }
-            } else if (status === 'pending' || pawapayStatus === 'NOT_FOUND') {
-              // Payment is pending - waiting for user approval on mobile phone
-              setPaymentStatus('pending')
-              setPayError(null)
-              return { completed: false, failed: false }
-            }
-          }
-          return { completed: false, failed: false }
-        } catch (err) {
-          console.error('Error checking payment status:', err)
-          return { completed: false, failed: false }
-        }
-      }
-
-      // Poll every 3 seconds for payment status (max 40 attempts = 2 minutes)
-      let attempts = 0
-      const maxAttempts = 40
-      const pollInterval = setInterval(async () => {
-        attempts++
-        const result = await checkPaymentStatus()
-        
-        if (result.completed || result.failed || attempts >= maxAttempts) {
-          clearInterval(pollInterval)
-          setPaying(false)
-          if (attempts >= maxAttempts && !result.completed) {
-            setPaymentStatus('failed')
-            setPayError('Payment authorization timed out. Please check your mobile phone for the authorization prompt and approve it, then try again.')
-          }
-        }
-      }, 3000)
-
-      // Initial check
-      await checkPaymentStatus()
-
+      console.log('[Payment] Redirecting to PawaPay payment page:', redirectUrl)
+      
+      // Redirect user to PawaPay payment page (like Stripe checkout)
+      window.location.href = redirectUrl
+      
+      // Note: User will be redirected back to returnUrl after payment
+      // The useEffect hook will handle the return and check payment status
+      
     } catch (err) {
-      console.error(err)
+      console.error('[Payment] Error:', err)
       const message =
         err instanceof Error ? err.message : t('payment.backendMissing', 'Payment unavailable.')
       setPayError(message)
