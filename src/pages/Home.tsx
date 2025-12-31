@@ -56,7 +56,7 @@ const initialResume: ResumeData = {
   cvType: 'simple'
 }
 
-/** Retourne le prix d'un plan */
+/** Retourne le prix d'un plan en USD (affiché à l'utilisateur) */
 function priceOf(plan: ResumePlan) {
   switch (plan) {
     case 'student':
@@ -66,6 +66,16 @@ function priceOf(plan: ResumePlan) {
     case 'advanced':
       return 3
   }
+}
+
+/** Convertit USD en CDF pour PawaPay
+ * Taux de change approximatif: 1 USD = 1500 CDF
+ * Minimum PawaPay: 500 CDF, donc $1 = 1500 CDF est sûr
+ */
+function usdToCdf(usdAmount: number): number {
+  // Conversion: 1 USD = 1500 CDF
+  // Cela garantit que même $1 (1500 CDF) dépasse le minimum de 500 CDF
+  return Math.round(usdAmount * 1500)
 }
 
 function defaultMobileProvider(country?: string): MobileMoneyProvider {
@@ -277,6 +287,17 @@ export default function Home() {
       // Build return URL - where PawaPay will redirect user after payment
       const returnUrl = `${window.location.origin}${window.location.pathname}?payment=success&plan=${encodeURIComponent(payment.plan)}`
       
+      // Convert USD price to CDF for PawaPay
+      // Frontend shows USD ($1, $2, $3) but sends CDF amount to API
+      const usdPrice = payment.price // Price in USD (1, 2, or 3)
+      const cdfAmount = usdToCdf(usdPrice) // Convert to CDF (1500, 3000, or 4500)
+      
+      console.log('[Payment] Converting USD to CDF:', {
+        plan: payment.plan,
+        usdPrice: `$${usdPrice}`,
+        cdfAmount: `${cdfAmount} CDF`
+      })
+      
       // Call backend to create PawaPay Payment Page session
       const response = await fetch(`${API_BASE}/api/payments/create`, {
         method: 'POST',
@@ -286,7 +307,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           plan: payment.plan,
-          amount: payment.price,
+          amount: cdfAmount, // Send CDF amount, not USD
           phone: intent.phone || data.phone,
           provider: intent.provider || 'vodacom',
           country: data.country || 'COD',
