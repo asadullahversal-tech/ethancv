@@ -287,15 +287,19 @@ export default function Home() {
       // Build return URL - where PawaPay will redirect user after payment
       const returnUrl = `${window.location.origin}${window.location.pathname}?payment=success&plan=${encodeURIComponent(payment.plan)}`
       
-      // Convert USD price to CDF for PawaPay
-      // Frontend shows USD ($1, $2, $3) but sends CDF amount to API
+      // Determine payment currency and amount based on provider
+      // All COD providers (Vodacom, Airtel, Orange) support both CDF and USD
+      // Use USD for all providers (as per user requirement)
       const usdPrice = payment.price // Price in USD (1, 2, or 3)
-      const cdfAmount = usdToCdf(usdPrice) // Convert to CDF (1500, 3000, or 4500)
+      const paymentAmount = usdPrice // Send USD amount directly (no conversion)
+      const paymentCurrency = 'USD' // Use USD for all providers
       
-      console.log('[Payment] Converting USD to CDF:', {
+      console.log('[Payment] Using USD for all providers:', {
         plan: payment.plan,
-        usdPrice: `$${usdPrice}`,
-        cdfAmount: `${cdfAmount} CDF`
+        provider: intent.provider || 'vodacom',
+        amount: `$${paymentAmount}`,
+        currency: paymentCurrency,
+        note: 'All COD providers (Vodacom, Airtel, Orange) support USD'
       })
       
       // Call backend to create PawaPay Payment Page session
@@ -307,11 +311,11 @@ export default function Home() {
         },
         body: JSON.stringify({
           plan: payment.plan,
-          amount: cdfAmount, // Send CDF amount, not USD
+          amount: paymentAmount, // USD for Airtel, CDF for others
           phone: intent.phone || data.phone,
           provider: intent.provider || 'vodacom',
           country: data.country || 'COD',
-          currency: 'CDF',
+          currency: paymentCurrency, // USD for Airtel, CDF for others
           returnUrl: returnUrl // Where to redirect after payment
         })
       })
