@@ -13,8 +13,6 @@ dist-ssr
 *.local
 
 # Environment variables
-.env
-.env.local
 .env.*.local
 scripts/.env
 
@@ -28,3 +26,4 @@ scripts/.env
 *.njsproj
 *.sln
 *.sw?
+config.bat
