@@ -287,11 +287,27 @@ export default function Home() {
       const paymentAmount = usdPrice // Send USD amount directly (no conversion)
       const paymentCurrency = 'USD' // Use USD for all providers
       
+      // Detect country from phone number if it starts with a country code
+      // Phone number 243... indicates Congo (COD)
+      const phoneNumber = (intent.phone || data.phone || '').toString().replace(/\s+/g, '')
+      let detectedCountry = data.country || 'COD'
+      
+      // If phone starts with 243, it's definitely Congo (COD)
+      if (phoneNumber.startsWith('243') || phoneNumber.startsWith('+243')) {
+        detectedCountry = 'COD'
+        console.log('[Payment] Detected Congo from phone number:', {
+          phone: phoneNumber,
+          detectedCountry: 'COD',
+          originalCountry: data.country
+        })
+      }
+      
       console.log('[Payment] Using USD for all providers:', {
         plan: payment.plan,
         provider: intent.provider || 'vodacom',
         amount: `$${paymentAmount}`,
         currency: paymentCurrency,
+        country: detectedCountry,
         note: 'All COD providers (Vodacom, Airtel, Orange) support USD'
       })
       
@@ -307,7 +323,7 @@ export default function Home() {
           amount: paymentAmount, // USD amount (1, 2, or 3) - no conversion
           phone: intent.phone || data.phone,
           provider: intent.provider || 'vodacom',
-          country: data.country || 'COD',
+          country: detectedCountry, // Use detected country (COD for 243 numbers)
           currency: paymentCurrency, // USD for all providers (Orange, Vodacom, Airtel)
           returnUrl: returnUrl // Where to redirect after payment
         })
