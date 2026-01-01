@@ -68,15 +68,8 @@ function priceOf(plan: ResumePlan) {
   }
 }
 
-/** Convertit USD en CDF pour PawaPay
- * Taux de change approximatif: 1 USD = 1500 CDF
- * Minimum PawaPay: 500 CDF, donc $1 = 1500 CDF est sûr
- */
-function usdToCdf(usdAmount: number): number {
-  // Conversion: 1 USD = 1500 CDF
-  // Cela garantit que même $1 (1500 CDF) dépasse le minimum de 500 CDF
-  return Math.round(usdAmount * 1500)
-}
+// Note: All COD providers (Vodacom, Airtel, Orange) support USD payments
+// We send USD amounts directly (1, 2, or 3) without conversion to CDF
 
 function defaultMobileProvider(country?: string): MobileMoneyProvider {
   const c = (country || '').toLowerCase()
@@ -311,11 +304,11 @@ export default function Home() {
         },
         body: JSON.stringify({
           plan: payment.plan,
-          amount: paymentAmount, // USD for Airtel, CDF for others
+          amount: paymentAmount, // USD amount (1, 2, or 3) - no conversion
           phone: intent.phone || data.phone,
           provider: intent.provider || 'vodacom',
           country: data.country || 'COD',
-          currency: paymentCurrency, // USD for Airtel, CDF for others
+          currency: paymentCurrency, // USD for all providers (Orange, Vodacom, Airtel)
           returnUrl: returnUrl // Where to redirect after payment
         })
       })
